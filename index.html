@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ALenJe ExoTics | Elite v2.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, serverTimestamp, getDocs, updateDoc, query, orderBy, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        window.FirebaseSDK = { initializeApp, getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, serverTimestamp, getAuth, signInAnonymously, onAuthStateChanged, getDocs, updateDoc, query, orderBy, setDoc };
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
+        
+        :root { 
+            --bg: #000; --text: #fff; --glass: rgba(255,255,255,0.06); 
+            --border: rgba(255,255,255,0.15); --nav-bg: rgba(15,15,15,0.9);
+            --emerald: #10b981;
+        }
+        [data-theme='light'] { 
+            --bg: #ffffff; --text: #0a0a0a; --glass: rgba(0,0,0,0.05); 
+            --border: rgba(0,0,0,0.1); --nav-bg: rgba(245,245,245,0.95);
+            --emerald: #059669;
+        }
+        
+        body { 
+            font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); 
+            margin: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+            -webkit-tap-highlight-color: transparent; overflow-x: hidden;
+        }
+        .street-text { font-style: italic; font-weight: 900; text-transform: uppercase; letter-spacing: -0.05em; }
+        .glass { background: var(--glass); backdrop-filter: blur(24px); border: 1.5px solid var(--border); }
+        .emerald-glow { text-shadow: 0 0 12px var(--emerald); }
+        ::-webkit-scrollbar { display: none; }
+        .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+        
+        .nav-active { color: var(--emerald); filter: drop-shadow(0 0 8px var(--emerald)); opacity: 1 !important; }
+        .nav-inactive { color: var(--text); opacity: 0.5; }
+        
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .animate-slide { animation: slideUp 0.4s ease forwards; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { initializeApp, getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, serverTimestamp, getAuth, signInAnonymously, onAuthStateChanged, query, orderBy, setDoc } = window.FirebaseSDK;
+
+        const firebaseConfig = {
+          apiKey: "AIzaSyCUxzypGZxXnrRhfO0BiqkgcaSlVdgVON8",
+          authDomain: "alenje-exotics.firebaseapp.com",
+          projectId: "alenje-exotics",
+          storageBucket: "alenje-exotics.firebasestorage.app",
+          messagingSenderId: "25574137051",
+          appId: "1:25574137051:web:a23b21764cd269560600fe"
+        };
+
+        const App = () => {
+            const [user, setUser] = React.useState(null);
+            const [profile, setProfile] = React.useState({ name: 'Exotic Client', theme: 'dark' });
+            const [view, setView] = React.useState('menu'); // menu, feed, chat, profile, admin
+            const [inventory, setInventory] = React.useState([]);
+            const [posts, setPosts] = React.useState([]);
+            const [messages, setMessages] = React.useState([]);
+            const [notifications, setNotifications] = React.useState([]);
+            const [showNotifs, setShowNotifs] = React.useState(false);
+            
+            const [isAdmin, setIsAdmin] = React.useState(false);
+            const [adminKey, setAdminKey] = React.useState("");
+            const [newStrain, setNewStrain] = React.useState({ name: '', price: '', thc: '', img: '' });
+            const [chatInput, setChatInput] = React.useState("");
+            const [isUploading, setIsUploading] = React.useState(false);
+
+            const app = React.useMemo(() => initializeApp(firebaseConfig), []);
+            const db = React.useMemo(() => getFirestore(app), [app]);
+            const auth = React.useMemo(() => getAuth(app), [app]);
+            const ID = "alenje_v2_final";
+
+            React.useEffect(() => {
+                onAuthStateChanged(auth, async (u) => {
+                    if (u) {
+                        setUser(u);
+                        const device = /iPhone|Android/i.test(navigator.userAgent) ? 'Mobile' : 'Desktop';
+                        let loc = "Malawi";
+                        try { const res = await fetch('https://ipapi.co/json/').then(r => r.json()); loc = `${res.city}, ${res.country_code}`; } catch(e){}
+                        
+                        await setDoc(doc(db, 'artifacts', ID, 'users', u.uid, 'meta', 'info'), { lastSeen: Date.now(), location: loc, device }, {merge: true});
+                        onSnapshot(doc(db, 'artifacts', ID, 'users', u.uid, 'profile', 'data'), (d) => {
+                            if(d.exists()) {
+                                setProfile(d.data());
+                                document.documentElement.setAttribute('data-theme', d.data().theme || 'dark');
+                            }
+                        });
+                    } else { signInAnonymously(auth); }
+                });
+
+                // Listeners
+                onSnapshot(collection(db, 'artifacts', ID, 'public', 'data', 'inventory'), (s) => {
+                    setInventory(s.docs.map(d => ({ id: d.id, ...d.data() })));
+                });
+                onSnapshot(collection(db, 'artifacts', ID, 'public', 'data', 'feed'), (s) => {
+                    setPosts(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => b.time - a.time));
+                });
+                onSnapshot(collection(db, 'artifacts', ID, 'public', 'data', 'notifications'), (s) => {
+                    setNotifications(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => b.time - a.time));
+                });
+            }, []);
+
+            React.useEffect(() => {
+                if(!user) return;
+                return onSnapshot(collection(db, 'artifacts', ID, 'public', 'data', 'chats'), (s) => {
+                    setMessages(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.time - b.time));
+                });
+            }, [user]);
+
+            const uploadImg = async (file) => {
+                setIsUploading(true);
+                const fd = new FormData(); fd.append('image', file);
+                try {
+                    const res = await fetch('https://api.imgbb.com/1/upload?key=819777174640824057e0344f620f4c6e', { method: 'POST', body: fd });
+                    const data = await res.json();
+                    return data.data.url;
+                } finally { setIsUploading(false); }
+            };
+
+            const addProduct = async () => {
+                if(!newStrain.name || !newStrain.price) return;
+                const docRef = await addDoc(collection(db, 'artifacts', ID, 'public', 'data', 'inventory'), { ...newStrain, time: Date.now() });
+                
+                // Post to Feed automatically
+                await addDoc(collection(db, 'artifacts', ID, 'public', 'data', 'feed'), {
+                    text: `NEW DROP: ${newStrain.name} is now live in the menu! 🔥`,
+                    img: newStrain.img,
+                    author: "ALENJE OFFICIAL",
+                    time: Date.now(),
+                    type: 'announcement'
+                });
+
+                // Send Notification
+                await addDoc(collection(db, 'artifacts', ID, 'public', 'data', 'notifications'), {
+                    title: "Fresh Inventory Landed!",
+                    body: `${newStrain.name} is now available for MWK ${newStrain.price}`,
+                    time: Date.now()
+                });
+
+                setNewStrain({ name: '', price: '', thc: '', img: '' });
+                alert("Inventory Updated & Feed Notified!");
+            };
+
+            const sendMessage = async (targetUid = null) => {
+                if(!chatInput.trim()) return;
+                await addDoc(collection(db, 'artifacts', ID, 'public', 'data', 'chats'), {
+                    text: chatInput,
+                    sender: isAdmin ? 'admin' : 'user',
+                    uid: targetUid || user.uid,
+                    time: Date.now()
+                });
+                setChatInput("");
+            };
+
+            return (
+                <div className="max-w-md mx-auto min-h-screen flex flex-col relative">
+                    {/* Notification Panel */}
+                    {showNotifs && (
+                        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md flex justify-end">
+                            <div className="w-[85%] h-full glass p-6 animate-in slide-in-from-right duration-300">
+                                <div className="flex justify-between items-center mb-8">
+                                    <h2 className="street-text text-xl">Updates</h2>
+                                    <button onClick={() => setShowNotifs(false)} className="text-2xl">✕</button>
+                                </div>
+                                <div className="space-y-4">
+                                    {notifications.length === 0 ? <p className="opacity-40 text-center py-10">No new alerts.</p> : 
+                                    notifications.map(n => (
+                                        <div key={n.id} className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl">
+                                            <p className="font-black text-[10px] text-emerald-500 uppercase tracking-widest">{n.title}</p>
+                                            <p className="text-xs font-bold mt-1">{n.body}</p>
+                                            <p className="text-[8px] opacity-30 mt-2">{new Date(n.time).toLocaleString()}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Header */}
+                    <nav className="p-6 flex justify-between items-center sticky top-0 bg-inherit z-50 border-b border-white/5">
+                        <div className="flex items-center gap-2" onClick={() => setView('menu')}>
+                            <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
+                                <svg width="20" height="20" fill="#000" viewBox="0 0 24 24"><path d="M12 22C12 22 13 18 17 15C18 14 22 14 22 14C22 14 18 13 15 11C16 7 15 2 15 2C15 2 13 6 12 10C11 6 9 2 9 2C9 2 8 7 9 11C6 13 2 14 2 14C2 14 6 14 7 15C11 18 12 22 12 22Z"/></svg>
+                            </div>
+                            <h1 className="street-text text-xl emerald-glow text-emerald-500">ALEnJe</h1>
+                        </div>
+                        <div className="flex gap-4">
+                            <button onClick={() => setShowNotifs(true)} className="relative">
+                                <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+                                {notifications.length > 0 && <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></div>}
+                            </button>
+                            <button onClick={() => setView('admin')} className={`p-2 rounded-full border ${isAdmin ? 'border-emerald-500 bg-emerald-500/10' : 'border-white/10 glass'}`}>
+                                <svg width="18" height="18" fill={isAdmin ? "#10b981" : "currentColor"} viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-1 6h2v2h-2V7zm0 4h2v6h-2v-6z"/></svg>
+                            </button>
+                        </div>
+                    </nav>
+
+                    <main className="p-6 flex-1 mb-24 overflow-x-hidden">
+                        {view === 'menu' && (
+                            <div className="space-y-8 animate-slide">
+                                <header className="text-center py-6">
+                                    <h2 className="text-7xl street-text leading-[0.75] mb-2 tracking-tighter">ALenJe<br/><span className="text-emerald-500">ExoTics</span></h2>
+                                    <div className="flex justify-center gap-4 mt-4">
+                                        <span className="text-[9px] font-black uppercase tracking-widest px-3 py-1 bg-emerald-500/10 text-emerald-500 rounded-full">EST 2024</span>
+                                        <span className="text-[9px] font-black uppercase tracking-widest px-3 py-1 bg-white/5 opacity-40 rounded-full">MWK Currency</span>
+                                    </div>
+                                </header>
+                                <div className="grid gap-8">
+                                    {inventory.map(item => (
+                                        <div key={item.id} className="glass rounded-[2.5rem] overflow-hidden shadow-2xl border-white/5 group">
+                                            <div className="h-80 relative bg-zinc-900">
+                                                <img src={item.img || 'https://via.placeholder.com/500'} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700" />
+                                                <div className="absolute top-6 right-6 bg-emerald-500 text-black px-4 py-1.5 rounded-full text-[10px] font-black italic shadow-lg">{item.thc}% THC</div>
+                                            </div>
+                                            <div className="p-8 bg-zinc-950/20 flex justify-between items-center">
+                                                <div>
+                                                    <h3 className="street-text text-3xl leading-none mb-2">{item.name}</h3>
+                                                    <p className="text-2xl font-black italic text-emerald-500">MWK {Number(item.price).toLocaleString()}</p>
+                                                </div>
+                                                <button onClick={() => { setView('chat'); setChatInput(`Checking on ${item.name}...`); }} className="bg-white text-black h-16 w-16 rounded-3xl flex items-center justify-center active:scale-90 transition-transform">
+                                                    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'feed' && (
+                            <div className="space-y-6 animate-slide">
+                                <h2 className="street-text text-3xl text-emerald-500">Community Feed</h2>
+                                <div className="glass p-6 rounded-[2rem] space-y-4">
+                                    <div className="flex items-start gap-4">
+                                        <div className="w-14 h-14 glass rounded-2xl flex items-center justify-center shrink-0 overflow-hidden relative">
+                                            {newPost?.img ? <img src={newPost.img} className="w-full h-full object-cover" /> : <svg width="24" height="24" fill="currentColor" opacity="0.2" viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>}
+                                            <input type="file" className="absolute inset-0 opacity-0" onChange={async e => {
+                                                const url = await uploadImg(e.target.files[0]);
+                                                setNewPost(p => ({...p, img: url}));
+                                            }} />
+                                        </div>
+                                        <textarea value={newPost?.text || ""} onChange={e => setNewPost(p => ({...p, text: e.target.value}))} placeholder="Share your experience..." className="w-full bg-transparent text-sm p-2 outline-none resize-none border-b border-white/5 h-20" />
+                                    </div>
+                                    <button onClick={async () => {
+                                        await addDoc(collection(db, 'artifacts', ID, 'public', 'data', 'feed'), {
+                                            ...newPost, author: profile.name, uid: user.uid, time: Date.now()
+                                        });
+                                        setNewPost({ text: '', img: '' });
+                                    }} className="w-full bg-white text-black py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em]">{isUploading ? "Uploading..." : "Publish Post"}</button>
+                                </div>
+
+                                <div className="space-y-8 pb-10">
+                                    {posts.map(p => (
+                                        <div key={p.id} className={`glass rounded-[2.5rem] overflow-hidden border border-white/5 ${p.type === 'announcement' ? 'border-emerald-500/30 ring-1 ring-emerald-500/20' : ''}`}>
+                                            {p.img && <img src={p.img} className="w-full h-80 object-cover" />}
+                                            <div className="p-8">
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black ${p.type === 'announcement' ? 'bg-emerald-500 text-black' : 'bg-white/10 text-white'}`}>
+                                                            {p.author[0]}
+                                                        </div>
+                                                        <span className="text-[11px] font-black uppercase tracking-widest">{p.author}</span>
+                                                    </div>
+                                                    <span className="text-[8px] opacity-30 font-bold">{new Date(p.time).toLocaleDateString()}</span>
+                                                </div>
+                                                <p className="text-sm font-bold opacity-80 leading-relaxed italic">"{p.text}"</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'chat' && (
+                            <div className="flex flex-col h-[75vh] animate-slide">
+                                <div className="flex-1 overflow-y-auto space-y-6 pb-6">
+                                    <p className="text-center text-[9px] font-black opacity-20 uppercase tracking-[0.3em] py-4">Direct Connection with Alenje</p>
+                                    {messages.filter(m => m.uid === user.uid).map(m => (
+                                        <div key={m.id} className={`flex ${m.sender === 'admin' ? 'justify-start' : 'justify-end'}`}>
+                                            <div className={`px-6 py-4 max-w-[85%] text-xs font-bold rounded-[2rem] ${m.sender === 'admin' ? 'bg-emerald-500/20 border border-emerald-500/30' : 'bg-white/5'}`}>
+                                                {m.text}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="p-2 glass rounded-[2rem] flex items-center gap-2">
+                                    <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendMessage()} placeholder="Send a message..." className="flex-1 bg-transparent px-4 text-sm font-bold outline-none" />
+                                    <button onClick={() => sendMessage()} className="w-14 h-14 bg-emerald-500 text-black rounded-3xl flex items-center justify-center">
+                                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'profile' && (
+                            <div className="space-y-10 animate-slide pt-10">
+                                <div className="text-center space-y-2">
+                                    <div className="w-24 h-24 bg-emerald-500/20 rounded-[2.5rem] mx-auto flex items-center justify-center mb-4">
+                                        <svg width="40" height="40" fill="var(--emerald)" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                                    </div>
+                                    <h2 className="street-text text-3xl">Profile Settings</h2>
+                                </div>
+
+                                <div className="glass p-10 rounded-[3rem] space-y-8">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase opacity-40 block ml-4">Screen Name</label>
+                                        <input value={profile.name} onChange={e => {
+                                            const n = e.target.value;
+                                            setProfile(p => ({...p, name: n}));
+                                            setDoc(doc(db, 'artifacts', ID, 'users', user.uid, 'profile', 'data'), { name: n, theme: profile.theme }, {merge: true});
+                                        }} className="w-full bg-black/40 p-5 rounded-2xl text-center font-bold outline-none border border-white/5 focus:border-emerald-500/50" />
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <label className="text-[10px] font-black uppercase opacity-40 block text-center">Visual Experience</label>
+                                        <div className="flex gap-2 p-2 bg-black/30 rounded-3xl">
+                                            {['dark', 'light'].map(t => (
+                                                <button key={t} onClick={() => {
+                                                    setProfile(p => ({...p, theme: t}));
+                                                    setDoc(doc(db, 'artifacts', ID, 'users', user.uid, 'profile', 'data'), { theme: t }, {merge: true});
+                                                }} className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase transition-all ${profile.theme === t ? 'bg-white text-black' : 'opacity-40'}`}>{t}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <p className="text-center text-[9px] font-black opacity-10 tracking-[0.5em] uppercase">Client Identity: {user?.uid.slice(0,12)}</p>
+                            </div>
+                        )}
+
+                        {view === 'admin' && (
+                            <div className="space-y-8 animate-slide">
+                                {!isAdmin ? (
+                                    <div className="glass p-10 rounded-[3rem] text-center space-y-6 mt-10">
+                                        <h2 className="street-text text-3xl text-emerald-500">Command Center</h2>
+                                        <input type="password" placeholder="ADMIN EMAIL" className="w-full bg-zinc-900 p-5 rounded-2xl text-center border border-white/10" onChange={e => setAdminKey(e.target.value)} />
+                                        <button onClick={() => adminKey === "kamzyslime7@gmail.com" ? setIsAdmin(true) : alert("Access Denied")} className="w-full bg-emerald-500 text-black py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Authenticate</button>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-10 pb-20">
+                                        <div className="flex justify-between items-center">
+                                            <h2 className="street-text text-3xl text-emerald-500">Dashboard</h2>
+                                            <button onClick={() => setIsAdmin(false)} className="px-5 py-2 glass rounded-full text-[10px] font-black uppercase">Lock</button>
+                                        </div>
+
+                                        <div className="glass p-8 rounded-[2.5rem] space-y-6">
+                                            <h3 className="text-[11px] font-black uppercase tracking-widest text-emerald-500">Drop New Inventory</h3>
+                                            <div className="w-full aspect-square glass rounded-3xl flex flex-col items-center justify-center relative overflow-hidden">
+                                                {newStrain.img ? <img src={newStrain.img} className="w-full h-full object-cover" /> : (
+                                                    <>
+                                                        <svg width="40" height="40" fill="currentColor" opacity="0.1" viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                                                        <p className="text-[10px] font-black opacity-30 mt-4">Tap to upload physical photo</p>
+                                                    </>
+                                                )}
+                                                <input type="file" className="absolute inset-0 opacity-0" onChange={async e => {
+                                                    const url = await uploadImg(e.target.files[0]);
+                                                    setNewStrain(p => ({...p, img: url}));
+                                                }} />
+                                            </div>
+                                            <div className="space-y-4">
+                                                <input placeholder="STRAIN NAME" className="w-full bg-black/40 p-4 rounded-xl text-xs border border-white/5" value={newStrain.name} onChange={e => setNewStrain({...newStrain, name: e.target.value})} />
+                                                <div className="flex gap-4">
+                                                    <input placeholder="MWK PRICE" className="w-full bg-black/40 p-4 rounded-xl text-xs border border-white/5" value={newStrain.price} onChange={e => setNewStrain({...newStrain, price: e.target.value})} />
+                                                    <input placeholder="THC %" className="w-full bg-black/40 p-4 rounded-xl text-xs border border-white/5" value={newStrain.thc} onChange={e => setNewStrain({...newStrain, thc: e.target.value})} />
+                                                </div>
+                                                <button onClick={addProduct} disabled={isUploading} className="w-full bg-white text-black py-5 rounded-2xl font-black text-xs uppercase tracking-widest">{isUploading ? "Uploading..." : "Publish & Notify Clients"}</button>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <h3 className="text-[11px] font-black uppercase text-emerald-500">Live Client Intel</h3>
+                                            {[...new Set(messages.map(m => m.uid))].map(uId => (
+                                                <div key={uId} className="p-6 glass rounded-3xl space-y-4 border border-white/5">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-[10px] font-black text-emerald-500 uppercase">User_{uId.slice(0,6)}</span>
+                                                        <span className="text-[8px] opacity-30 bg-white/10 px-3 py-1 rounded-full uppercase">Analytics Enabled</span>
+                                                    </div>
+                                                    <div className="max-h-40 overflow-y-auto space-y-3 py-2 border-y border-white/5">
+                                                        {messages.filter(m => m.uid === uId).map(m => (
+                                                            <div key={m.id} className={`flex ${m.sender === 'admin' ? 'justify-end' : 'justify-start'}`}>
+                                                                <p className={`text-[10px] px-3 py-1.5 rounded-lg ${m.sender === 'admin' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-white/5'}`}>{m.text}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <input id={`r-${uId}`} placeholder="Type reply..." className="flex-1 bg-black/40 p-4 rounded-xl text-[10px]" />
+                                                        <button onClick={() => {
+                                                            const val = document.getElementById(`r-${uId}`).value;
+                                                            addDoc(collection(db, 'artifacts', ID, 'public', 'data', 'chats'), { text: val, sender: 'admin', uid: uId, time: Date.now() });
+                                                            document.getElementById(`r-${uId}`).value = "";
+                                                        }} className="bg-emerald-500 text-black px-6 rounded-xl font-black text-[10px]">SEND</button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </main>
+
+                    {/* Navbar */}
+                    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-sm glass rounded-[2.5rem] p-2 flex justify-around items-center z-[90] safe-bottom shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+                        {[
+                            {id: 'menu', icon: <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>},
+                            {id: 'feed', icon: <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24"><path d="M4 4h7V2H4c-1.1 0-2 .9-2 2v7h2V4zm6 9l-4 5h12l-3-4-2.03 2.71L10 13zm7-11h-7v2h7v7h2V4c0-1.1-.9-2-2-2zM4 13H2v7c0 1.1.9 2 2 2h7v-2H4v-7zm13 7h-7v2h7c1.1 0 2-.9 2-2v-7h-2v7z"/></svg>},
+                            {id: 'chat', icon: <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>},
+                            {id: 'profile', icon: <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>}
+                        ].map(n => (
+                            <button key={n.id} onClick={() => setView(n.id)} className={`p-4 rounded-2xl transition-all duration-300 relative ${view === n.id ? 'nav-active bg-emerald-500/10' : 'nav-inactive'}`}>
+                                {n.icon}
+                                {n.id === 'chat' && messages.some(m => m.sender === 'admin' && m.uid === user?.uid) && view !== 'chat' && (
+                                    <div className="absolute top-3 right-3 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black animate-pulse"></div>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+

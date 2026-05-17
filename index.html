@@ -48,6 +48,9 @@
     const db = firebase.firestore();
     const appId = 'alenje-exotics';
 
+    // --- Admin Configuration ---
+    const ADMIN_PASSCODE = "kamzy777"; 
+
     // --- Icon Component Definitions ---
     const LeafIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17,8C8,10 5.9,16.17 3.82,21.34L5.71,22L6.66,19.7C7.14,19.87 7.64,20 8.13,20C11,20 13.54,18.06 14.88,15.11C15.6,15.11 16.32,15.06 17.03,14.97C18.66,14.77 20,13.38 20,11.74V2H17.03L17,8Z" /></svg>;
     const HomeIcon = () => <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>;
@@ -58,6 +61,7 @@
     const MoonIcon = () => <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12.1 22c4.9 0 9-3.6 10-8.3.2-1.1-.9-1.9-1.8-1.5-1.1.5-2.2.8-3.5.8-4.4 0-8-3.6-8-8 0-1.2.3-2.4.8-3.5.4-.9-.4-1.9-1.5-1.8C3.6 1 0 5.1 0 10c0 6.6 5.4 12 12.1 12z"/></svg>;
     const CameraIcon = () => <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12m-3.2 0a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0 -6.4 0M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5s5 2.24 5 5s-2.24 5-5 5z"/></svg>;
     const TrashIcon = () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+    const SendIcon = () => <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>;
 
     function App() {
       const [user, setUser] = React.useState(null);
@@ -77,12 +81,24 @@
       const [newPost, setNewPost] = React.useState("");
       const [postImage, setPostImage] = React.useState("");
       
+      // Admin Security & Mode States
+      const [isAdmin, setIsAdmin] = React.useState(false); 
+      const [showPasscodeModal, setShowPasscodeModal] = React.useState(false);
+      const [passcodeInput, setPasscodeInput] = React.useState("");
+      const [passcodeError, setPasscodeError] = React.useState(false);
+
+      // On-Site Real-time Chat States
+      const [rawMessages, setRawMessages] = React.useState([]);
+      const [chatInput, setChatInput] = React.useState("");
+      const [selectedChatUserId, setSelectedChatUserId] = React.useState(null); // Admin only
+
       // Admin Form State
       const [newItem, setNewItem] = React.useState({ name: '', price: '', category: 'Strains', thc: '24', img: '' });
 
       const postFileRef = React.useRef(null);
       const adminFileRef = React.useRef(null);
       const profileFileRef = React.useRef(null);
+      const chatEndRef = React.useRef(null);
 
       // --- Auth & Profile Loading ---
       React.useEffect(() => {
@@ -126,11 +142,13 @@
       React.useEffect(() => {
         if (!user) return;
 
+        // 1. Inventory Sync
         const invRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('inventory');
         const unsubInv = invRef.onSnapshot((s) => {
           setInventory(s.docs.map(d => ({ id: d.id, ...d.data() })));
         }, (err) => console.error("Inventory error:", err));
 
+        // 2. Community Board Sync
         const postsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('community');
         const unsubPosts = postsRef.onSnapshot((s) => {
           const sorted = s.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -138,8 +156,19 @@
           setPosts(sorted);
         }, (err) => console.error("Community error:", err));
 
-        return () => { unsubInv(); unsubPosts(); };
+        // 3. Live On-Site Messages Sync
+        const chatRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('chats');
+        const unsubChat = chatRef.onSnapshot((s) => {
+          setRawMessages(s.docs.map(d => ({ id: d.id, ...d.data() })));
+        }, (err) => console.error("Chats load error:", err));
+
+        return () => { unsubInv(); unsubPosts(); unsubChat(); };
       }, [user]);
+
+      // --- Scroll Chat to Bottom ---
+      React.useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [rawMessages, view, selectedChatUserId]);
 
       const handleFileUpload = (e, callback) => {
         const file = e.target.files[0];
@@ -194,6 +223,73 @@
       const deleteProduct = async (id) => {
         await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('inventory').doc(id).delete();
       };
+
+      // --- Send On-Site Direct Message ---
+      const handleSendMessage = async (e) => {
+        e.preventDefault();
+        if (!chatInput.trim() || !user) return;
+
+        // If regular user, room is their own UID. If admin, room is the selected user's UID.
+        const targetRoomId = isAdmin ? selectedChatUserId : user.uid;
+
+        try {
+          await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('chats').add({
+            text: chatInput,
+            chatRoomId: targetRoomId,
+            senderId: user.uid,
+            senderName: isAdmin ? "Alenje Support" : (profile.name || "Guest"),
+            senderPhoto: isAdmin ? "https://api.dicebear.com/7.x/bottts/svg?seed=support" : profile.photo,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          setChatInput("");
+        } catch (err) {
+          console.error("Direct Message failed:", err);
+        }
+      };
+
+      // --- Passcode Verification ---
+      const verifyAdminAccess = (e) => {
+        e.preventDefault();
+        if (passcodeInput === ADMIN_PASSCODE) {
+          setPasscodeError(false);
+          setShowPasscodeModal(false);
+          setPasscodeInput("");
+          setIsAdmin(true);
+          setView('admin');
+        } else {
+          setPasscodeError(true);
+        }
+      };
+
+      // --- Filtered Messages Logic (RULE 2: Filter in memory) ---
+      const activeMessages = React.useMemo(() => {
+        const targetRoom = isAdmin ? selectedChatUserId : (user ? user.uid : null);
+        if (!targetRoom) return [];
+        return rawMessages
+          .filter(m => m.chatRoomId === targetRoom)
+          .sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+      }, [rawMessages, isAdmin, selectedChatUserId, user]);
+
+      // --- Group Active Chat Threads (For Admin Dashboard) ---
+      const activeAdminThreads = React.useMemo(() => {
+        if (!isAdmin) return [];
+        const threadsMap = {};
+        rawMessages.forEach(msg => {
+          if (!msg.chatRoomId) return;
+          const roomId = msg.chatRoomId;
+          // Don't show admin's own responses as user identity
+          if (!threadsMap[roomId] || (msg.timestamp?.seconds || 0) > (threadsMap[roomId].latestTime || 0)) {
+            threadsMap[roomId] = {
+              roomId,
+              latestMessage: msg.text,
+              latestTime: msg.timestamp?.seconds || 0,
+              senderName: msg.senderId !== user?.uid ? msg.senderName : (threadsMap[roomId]?.senderName || "Active Customer"),
+              senderPhoto: msg.senderId !== user?.uid ? msg.senderPhoto : (threadsMap[roomId]?.senderPhoto || "https://api.dicebear.com/7.x/bottts/svg?seed=guest")
+            };
+          }
+        });
+        return Object.values(threadsMap).sort((a, b) => b.latestTime - a.latestTime);
+      }, [rawMessages, isAdmin, user]);
 
       if (loading) return (
         <div className="h-screen flex items-center justify-center bg-black text-emerald-500 font-black uppercase text-xs tracking-widest animate-pulse">
@@ -262,7 +358,7 @@
                               <span className="text-xl font-black italic text-emerald-500">K{item.price}</span>
                             </div>
                           </div>
-                          <button onClick={() => setView('chat')} className="w-full py-4 bg-emerald-500 rounded-xl font-black text-black text-[10px] uppercase tracking-widest active:scale-95 transition-all">
+                          <button onClick={() => { if(isAdmin){ setView('settings'); } else { setView('chat'); } }} className="w-full py-4 bg-emerald-500 rounded-xl font-black text-black text-[10px] uppercase tracking-widest active:scale-95 transition-all">
                             Secure Order
                           </button>
                         </div>
@@ -345,7 +441,7 @@
                     </button>
 
                     <div className="pt-6 border-t border-white/5 space-y-3">
-                      <button onClick={() => setView('admin')} className="w-full flex justify-between items-center py-4 px-5 bg-white/5 rounded-xl border border-white/10">
+                      <button onClick={() => { if(isAdmin){ setView('admin'); } else { setShowPasscodeModal(true); } }} className="w-full flex justify-between items-center py-4 px-5 bg-white/5 rounded-xl border border-white/10">
                         <span className="text-[10px] font-black uppercase tracking-widest">Admin Control</span>
                         <SettingsIcon />
                       </button>
@@ -388,19 +484,80 @@
               )}
 
               {view === 'chat' && (
-                <div className="h-[50vh] flex flex-col items-center justify-center text-center">
-                   <div className="w-16 h-16 bg-emerald-500/10 rounded-2xl border border-emerald-500/30 flex items-center justify-center mb-6">
-                    <ChatIcon />
-                  </div>
-                  <h3 className="font-black text-3xl uppercase italic mb-2">SECURE<br/><span className="text-emerald-500">ORDERING</span></h3>
-                  <p className="text-[10px] opacity-40 font-black uppercase tracking-widest mb-8">End-to-End Encrypted Tunnel</p>
-                  <a 
-                    href={`https://wa.me/${profile.phone || '265888000000'}?text=Secure%20Order%20Inquiry%20from%20${profile.name}`}
-                    target="_blank"
-                    className="w-full py-4 bg-emerald-500 text-black rounded-xl font-black text-[10px] uppercase tracking-widest text-center"
-                  >
-                    Open WhatsApp Tunnel
-                  </a>
+                <div className="flex flex-col h-[75vh]">
+                  {/* Real-time On-Site Chat Logic */}
+                  {isAdmin && !selectedChatUserId ? (
+                    // Admin Thread Directory View
+                    <div className="flex-1 overflow-y-auto space-y-4">
+                      <h3 className="font-black text-2xl uppercase italic text-emerald-500 mb-6">SECURE SECRETS</h3>
+                      {activeAdminThreads.length === 0 ? (
+                        <div className="text-center py-20 opacity-30 uppercase font-black text-xs">Awaiting Customer Tunnels...</div>
+                      ) : (
+                        activeAdminThreads.map(thread => (
+                          <div 
+                            key={thread.roomId} 
+                            onClick={() => setSelectedChatUserId(thread.roomId)}
+                            className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-2xl cursor-pointer hover:border-emerald-500/40 transition-all"
+                          >
+                            <div className="flex items-center gap-3">
+                              <img src={thread.senderPhoto} className="w-10 h-10 rounded-xl object-cover" />
+                              <div className="text-left">
+                                <h4 className="font-bold text-sm text-white">{thread.senderName}</h4>
+                                <p className="text-[10px] text-zinc-500 line-clamp-1">{thread.latestMessage}</p>
+                              </div>
+                            </div>
+                            <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full font-black uppercase">Open</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  ) : (
+                    // 1-on-1 Real-time Room Chat View
+                    <div className="flex flex-col flex-1 bg-white/5 border border-white/5 rounded-[2rem] overflow-hidden">
+                      {/* Chat Room Header */}
+                      <div className="flex items-center justify-between px-6 py-4 bg-black/40 border-b border-white/5">
+                        <div className="flex items-center gap-2">
+                          {isAdmin && (
+                            <button onClick={() => setSelectedChatUserId(null)} className="mr-2 text-emerald-500 font-bold">← Back</button>
+                          )}
+                          <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
+                          <span className="text-xs font-black uppercase tracking-widest text-emerald-500">
+                            {isAdmin ? "Tunneling Customer" : "Secure Tunnel with Alenje Exotics"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Chat Messages */}
+                      <div className="flex-1 overflow-y-auto p-5 space-y-4 no-scrollbar">
+                        {activeMessages.map(msg => {
+                          const isMe = msg.senderId === user?.uid;
+                          return (
+                            <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                              <div className={`max-w-[80%] rounded-2xl p-4 text-xs font-medium ${isMe ? 'bg-emerald-500 text-black rounded-tr-none' : 'bg-white/5 text-white border border-white/5 rounded-tl-none'}`}>
+                                <p className="font-bold text-[8px] uppercase tracking-wider opacity-60 mb-1">{msg.senderName}</p>
+                                <p className="leading-relaxed">{msg.text}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div ref={chatEndRef}></div>
+                      </div>
+
+                      {/* Chat Form Input */}
+                      <form onSubmit={handleSendMessage} className="p-4 bg-black/60 border-t border-white/5 flex gap-2">
+                        <input 
+                          type="text"
+                          value={chatInput}
+                          onChange={e => setChatInput(e.target.value)}
+                          placeholder="Transmit message..."
+                          className="flex-1 bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-xs font-bold outline-none focus:border-emerald-500 placeholder:opacity-20"
+                        />
+                        <button type="submit" className="w-11 h-11 bg-emerald-500 text-black rounded-xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all">
+                          <SendIcon />
+                        </button>
+                      </form>
+                    </div>
+                  )}
                 </div>
               )}
             </main>
@@ -420,6 +577,54 @@
                 <SettingsIcon />
               </button>
             </nav>
+
+            {/* Admin Security Passcode Modal */}
+            {showPasscodeModal && (
+              <div className="fixed inset-0 z-[250] flex items-center justify-center p-6">
+                <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setShowPasscodeModal(false)}></div>
+                <div className="relative bg-[#0d0d0d] border border-emerald-500/20 w-full max-w-sm rounded-[2rem] p-8 shadow-2xl">
+                  <div className="text-center mb-6">
+                    <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center mx-auto mb-4">
+                      <SettingsIcon />
+                    </div>
+                    <h3 className="text-xl font-black uppercase italic text-emerald-500">Enter Access Key</h3>
+                    <p className="text-[10px] opacity-40 font-black tracking-widest uppercase mt-1">Admin Authorization Required</p>
+                  </div>
+
+                  <form onSubmit={verifyAdminAccess} className="space-y-4">
+                    <input 
+                      type="password"
+                      value={passcodeInput}
+                      onChange={(e) => setPasscodeInput(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-black/50 border border-white/5 p-4 rounded-xl text-center text-lg tracking-widest font-bold outline-none focus:border-emerald-500"
+                      autoFocus
+                    />
+                    {passcodeError && (
+                      <p className="text-red-500 text-[10px] font-black uppercase text-center tracking-wider">Invalid Passcode</p>
+                    )}
+                    <button 
+                      type="submit"
+                      className="w-full py-4 bg-emerald-500 text-black font-black text-[10px] uppercase tracking-widest rounded-xl shadow-lg shadow-emerald-500/20"
+                    >
+                      Authenticate
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setShowPasscodeModal(false);
+                        setPasscodeError(false);
+                        setPasscodeInput("");
+                      }}
+                      className="w-full text-[9px] font-black text-zinc-500 uppercase tracking-widest hover:text-white text-center"
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       );

@@ -21,7 +21,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
     <script type="text/babel">
-        // --- Firebase Initialization ---
+        // --- System Cluster Config ---
         const firebaseConfig = {
             apiKey: "AIzaSyCUxzypGZxXnrRhfO0BiqkgcaSlVdgVON8",
             authDomain: "alenje-exotics.firebaseapp.com",
@@ -35,8 +35,10 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
         const appId = 'alenje-exotics';
+        const ADMIN_EMAIL = "kamzyslime7@gmail.com";
+        const SITE_VERSION = "v2.4.0-production";
 
-        // Icons
+        // Navigation & Utility Minimalist Vector Engine Icons
         const HomeIcon = () => <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>;
         const UsersIcon = () => <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>;
         const ChatIcon = () => <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>;
@@ -45,6 +47,7 @@
         const MoonIcon = () => <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12.1 22c4.9 0 9-3.6 10-8.3.2-1.1-.9-1.9-1.8-1.5-1.1.5-2.2.8-3.5.8-4.4 0-8-3.6-8-8 0-1.2.3-2.4.8-3.5.4-.9-.4-1.9-1.5-1.8C3.6 1 0 5.1 0 10c0 6.6 5.4 12 12.1 12z"/></svg>;
         const CameraIcon = () => <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12m-3.2 0a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0 -6.4 0M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5s5 2.24 5 5s-2.24 5-5 5z"/></svg>;
         const BellIcon = () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>;
+        const PackageIcon = () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m-8-14l8 4m-8-4v10l8 4m0-10v10" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 
         function App() {
             const [user, setUser] = React.useState(null);
@@ -63,18 +66,25 @@
             const [postImage, setPostImage] = React.useState("");
             const [unreadNotifications, setUnreadNotifications] = React.useState(0);
 
-            // Auth Input Fields State
+            // Auth Fields
             const [email, setEmail] = React.useState("");
             const [password, setPassword] = React.useState("");
             const [isRegistering, setIsRegistering] = React.useState(false);
             const [authError, setAuthError] = React.useState("");
 
+            // Permissions & Customization Hardware hooks
             const [allowLocation, setAllowLocation] = React.useState(false);
             const [userLocation, setUserLocation] = React.useState(null);
             const [chatWallpaper, setChatWallpaper] = React.useState(localStorage.getItem('chat_bg') || "");
 
+            // Admin Inventory Constructor State
+            const [newItem, setNewItem] = React.useState({ name: '', price: '', category: 'Strains', thc: '24', img: '' });
+            const [adminStatusMsg, setAdminStatusMsg] = React.useState("");
+
             const postFileRef = React.useRef(null);
             const wallpaperFileRef = React.useRef(null);
+            const profileFileRef = React.useRef(null);
+            const adminFileRef = React.useRef(null);
             const chatEndRef = React.useRef(null);
 
             React.useEffect(() => {
@@ -87,7 +97,7 @@
                             setProfile(snap.data());
                         } else {
                             const initialProfile = {
-                                name: u.displayName || email.split('@')[0] || 'Exotic Member',
+                                name: u.displayName || u.email.split('@')[0] || 'Exotic Member',
                                 photo: u.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${u.uid}`,
                                 caption: 'Exploring Alenje Exotics',
                                 phone: ''
@@ -99,7 +109,7 @@
                     setLoading(false);
                 });
                 return () => unsubscribe();
-            }, [email]);
+            }, []);
 
             React.useEffect(() => {
                 if (!user) return;
@@ -136,35 +146,20 @@
                 if (view === 'chat') chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
             }, [chatMessages, view]);
 
-            // --- Authentication Engines ---
             const loginWithGoogle = async () => {
                 setAuthError("");
                 const provider = new firebase.auth.GoogleAuthProvider();
-                try { 
-                    await auth.signInWithPopup(provider); 
-                } catch (err) { 
-                    console.error(err);
-                    setAuthError(err.message);
-                }
+                try { await auth.signInWithPopup(provider); } catch (err) { setAuthError(err.message); }
             };
 
             const handleEmailAuth = async (e) => {
                 e.preventDefault();
                 setAuthError("");
-                if (!email || !password) {
-                    setAuthError("Please fill out all security credentials.");
-                    return;
-                }
+                if (!email || !password) { setAuthError("Please fill out all identity credentials."); return; }
                 try {
-                    if (isRegistering) {
-                        await auth.createUserWithEmailAndPassword(email, password);
-                    } else {
-                        await auth.signInWithEmailAndPassword(email, password);
-                    }
-                } catch (err) {
-                    console.error(err);
-                    setAuthError(err.message);
-                }
+                    if (isRegistering) { await auth.createUserWithEmailAndPassword(email, password); } 
+                    else { await auth.signInWithEmailAndPassword(email, password); }
+                } catch (err) { setAuthError(err.message); }
             };
 
             const toggleLocationAccess = () => {
@@ -175,26 +170,28 @@
                             setAllowLocation(true);
                         }, (err) => console.error(err));
                     }
-                } else {
-                    setAllowLocation(false);
-                    setUserLocation(null);
-                }
+                } else { setAllowLocation(false); setUserLocation(null); }
             };
 
             const handleFileUpload = (e, callback) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                if (file.size > 2097152) return;
+                if (file.size > 2097152) { alert("File exceeds secure buffer size limit (2MB)."); return; }
                 const reader = new FileReader();
                 reader.onloadend = () => callback(reader.result);
                 reader.readAsDataURL(file);
             };
 
             const handleWallpaperChange = (e) => {
-                handleFileUpload(e, (res) => {
-                    setChatWallpaper(res);
-                    localStorage.setItem('chat_bg', res);
-                });
+                handleFileUpload(e, (res) => { setChatWallpaper(res); localStorage.setItem('chat_bg', res); });
+            };
+
+            const handleProfilePhotoUpload = (e) => {
+                handleFileUpload(e, (res) => { setProfile(prev => ({ ...prev, photo: res })); });
+            };
+
+            const handleAdminProductImageUpload = (e) => {
+                handleFileUpload(e, (res) => { setNewItem(prev => ({ ...prev, img: res })); });
             };
 
             const saveProfile = async () => {
@@ -229,9 +226,25 @@
                 } catch (err) { console.error(err); }
             };
 
+            // --- Admin Catalog Integration ---
+            const handleAddProduct = async (e) => {
+                e.preventDefault();
+                setAdminStatusMsg("");
+                if (!newItem.name || !newItem.price) { setAdminStatusMsg("Error: Product title and base price required."); return; }
+                try {
+                    await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('inventory').add({
+                        ...newItem, timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('notifications').add({
+                        title: "Drop Alert", message: `New shipment added to catalog: ${newItem.name} (${newItem.category}).`, timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    setNewItem({ name: '', price: '', category: 'Strains', thc: '24', img: '' });
+                    setAdminStatusMsg("Success: Manifest pushed to decentralized database.");
+                } catch (err) { setAdminStatusMsg(`Push failed: ${err.message}`); }
+            };
+
             if (loading) return <div className="h-screen flex items-center justify-center bg-black text-emerald-500 font-black uppercase text-xs tracking-widest animate-pulse">Establishing Connection...</div>;
 
-            // --- Updated Gateway UI (With Email Logins) ---
             if (!user) {
                 return (
                     <div className="min-h-screen w-full bg-[#030303] flex flex-col items-center justify-center px-6 py-12 text-white">
@@ -242,21 +255,15 @@
                         <p className="opacity-40 text-[8px] uppercase tracking-[0.4em] mb-8 text-center">Secure Vault Access</p>
                         
                         <div className="w-full max-w-[340px] bg-white/5 border border-white/5 p-6 rounded-2xl shadow-xl">
-                            <h2 className="font-bold text-sm uppercase tracking-wider text-center text-emerald-400 mb-4">
-                                {isRegistering ? "Create Gateway Account" : "Identity Verification"}
-                            </h2>
-
+                            <h2 className="font-bold text-sm uppercase tracking-wider text-center text-emerald-400 mb-4">{isRegistering ? "Create Gateway Account" : "Identity Verification"}</h2>
                             <form onSubmit={handleEmailAuth} className="space-y-3">
-                                <input type="email" placeholder="Secure Email Address" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black/50 border border-white/10 p-3 rounded-xl text-xs outline-none text-white focus:border-emerald-500 transition-colors" />
-                                <input type="password" placeholder="Access Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black/50 border border-white/10 p-3 rounded-xl text-xs outline-none text-white focus:border-emerald-500 transition-colors" />
-                                
+                                <input type="email" placeholder="Secure Email Address" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black/50 border border-white/10 p-3 rounded-xl text-xs outline-none focus:border-emerald-500 transition-colors" />
+                                <input type="password" placeholder="Access Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black/50 border border-white/10 p-3 rounded-xl text-xs outline-none focus:border-emerald-500 transition-colors" />
                                 {authError && <p className="text-[10px] text-red-400 font-medium bg-red-500/10 border border-red-500/20 p-2.5 rounded-lg">{authError}</p>}
-                                
-                                <button type="submit" className="w-full py-3.5 bg-emerald-500 text-black font-black text-xs uppercase tracking-widest rounded-xl shadow-lg mt-2 transition-transform active:scale-[0.98]">
+                                <button type="submit" className="w-full py-3.5 bg-emerald-500 text-black font-black text-xs uppercase tracking-widest rounded-xl shadow-lg mt-2 active:scale-[0.98] transition-transform">
                                     {isRegistering ? "Register Account" : "Verify Log In"}
                                 </button>
                             </form>
-
                             <div className="flex justify-between items-center mt-4 pt-4 border-t border-white/5 text-[10px]">
                                 <button onClick={() => { setIsRegistering(!isRegistering); setAuthError(""); }} className="text-white/50 hover:text-emerald-400 transition-colors">
                                     {isRegistering ? "Already registered? Log In" : "Need credentials? Sign Up"}
@@ -264,11 +271,8 @@
                             </div>
                         </div>
 
-                        <div className="w-full max-w-[340px] flex items-center my-4 opacity-20">
-                            <hr className="flex-1 border-white/30" /><span className="px-3 text-[10px] uppercase font-bold">OR</span><hr className="flex-1 border-white/30" />
-                        </div>
-
-                        <button onClick={loginWithGoogle} className="w-full max-w-[340px] py-4 bg-white text-black font-black text-xs uppercase tracking-widest rounded-xl flex items-center justify-center gap-3 shadow-xl transition-transform active:scale-[0.98]">
+                        <div className="w-full max-w-[340px] flex items-center my-4 opacity-20"><hr className="flex-1 border-white/30" /><span className="px-3 text-[10px] uppercase font-bold">OR</span><hr className="flex-1 border-white/30" /></div>
+                        <button onClick={loginWithGoogle} className="w-full max-w-[340px] py-4 bg-white text-black font-black text-xs uppercase tracking-widest rounded-xl flex items-center justify-center gap-3 shadow-xl active:scale-[0.98] transition-transform">
                             <svg className="w-4 h-4" viewBox="0 0 24 24"><path fill="currentColor" d="M21.35 11.1h-9.17v2.73h6.51c-.33 1.56-1.56 2.95-3.24 3.5v2.88h5.15c3.01-2.77 4.75-6.86 4.75-11.75 0-.53-.05-1.07-.15-1.54z" fill="#4285F4"/><path fill="currentColor" d="M12.18 21.43c2.75 0 5.06-.91 6.75-2.47l-5.15-2.88c-.79.53-1.8.85-3.03.85-2.33 0-4.31-1.57-5.02-3.69H.47v2.98c1.76 3.49 5.38 5.86 9.53 5.86z" fill="#34A853"/><path fill="currentColor" d="M7.16 13.24c-.18-.53-.28-1.1-.28-1.69s.1-1.16.28-1.69V6.88H.47C-.12 8.05-.46 9.39-.46 10.8s.34 2.75.93 3.92l5.76-4.48z" fill="#FBBC05"/><path fill="currentColor" d="M12.18 5.1c1.49 0 2.84.51 3.9 1.51l2.92-2.92C17.23 2.1 14.92 1.1 12.18 1.1 8.03 1.1 4.41 3.47 2.65 6.96l5.76 4.48c.71-2.12 2.69-3.69 5.02-3.69z" fill="#EA4335"/></svg>
                             Continue with Google
                         </button>
@@ -276,7 +280,6 @@
                 );
             }
 
-            // --- Inside App UI System ---
             return (
                 <div className={`min-h-screen transition-colors duration-500 ${darkMode ? 'bg-[#030303] text-white' : 'bg-[#f8f9fa] text-black'}`}>
                     <div className="max-w-[440px] mx-auto px-5 pb-40">
@@ -336,7 +339,7 @@
                                     <h2 className="font-black text-4xl mb-6 uppercase italic">LIVE<br/><span className="text-emerald-500">ALERTS</span></h2>
                                     {notifications.length === 0 ? <p className="text-center opacity-30 py-12 text-xs font-bold uppercase">No Alerts</p> : notifications.map(n => (
                                         <div key={n.id} className="p-5 bg-white/5 border border-white/5 rounded-2xl">
-                                            <span className="text-[10px] font-black uppercase text-emerald-400 block">{n.title}</span>
+                                            <span className="text-[10px] font-black uppercase text-emerald-400 block">{n.title || "Alert Link"}</span>
                                             <p className="text-xs opacity-80 mt-1">{n.message}</p>
                                         </div>
                                     ))}
@@ -392,32 +395,143 @@
                             )}
 
                             {view === 'settings' && (
-                                <div className="bg-white/5 rounded-3xl p-6 space-y-6">
-                                    <div className="flex flex-col items-center">
-                                        <img src={profile.photo} className="w-20 h-20 rounded-xl object-cover border border-emerald-500" />
-                                        <span className="text-[10px] text-emerald-400 mt-2">{user.email}</span>
-                                    </div>
-                                    <div className="space-y-3">
-                                        <input value={profile.name} onChange={e => setProfile({...profile, name: e.target.value})} placeholder="Name" className="w-full bg-black/40 p-3 rounded-xl text-xs outline-none" />
-                                        <input value={profile.phone} onChange={e => setProfile({...profile, phone: e.target.value})} placeholder="Phone" className="w-full bg-black/40 p-3 rounded-xl text-xs outline-none" />
-                                        <button onClick={saveProfile} className="w-full py-3 bg-emerald-500 text-black font-black text-xs uppercase rounded-xl">Save Identity</button>
-                                    </div>
-                                    <div className="pt-4 border-t border-white/5 space-y-2">
-                                        <div className="flex justify-between items-center p-3 bg-black/20 rounded-xl text-xs">
-                                            <span>Access Location Data</span>
-                                            <input type="checkbox" checked={allowLocation} onChange={toggleLocationAccess} className="accent-emerald-500" />
+                                <div className="space-y-6 animate-in fade-in">
+                                    {/* Facebook Style Meta Layout Header */}
+                                    <div className="bg-white/5 rounded-3xl p-6 flex flex-col items-center border border-white/5 relative">
+                                        <div className="relative group cursor-pointer" onClick={() => profileFileRef.current.click()}>
+                                            <img src={profile.photo} className="w-24 h-24 rounded-2xl object-cover border-2 border-emerald-500 shadow-xl bg-neutral-900" />
+                                            <div className="absolute inset-0 bg-black/50 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                <CameraIcon />
+                                            </div>
+                                            <input type="file" accept="image/*" ref={profileFileRef} className="hidden" onChange={handleProfilePhotoUpload} />
                                         </div>
-                                        <button onClick={() => auth.signOut()} className="w-full py-3 bg-red-500/10 text-red-500 text-xs rounded-xl border border-red-500/20 mt-4">Disconnect</button>
+                                        <h3 className="font-black text-lg uppercase italic tracking-wide mt-4 text-emerald-400">{profile.name || "System Operative"}</h3>
+                                        <span className="text-[10px] opacity-40 uppercase tracking-widest mt-1">{user.email}</span>
                                     </div>
+
+                                    {/* Profile Customization Section */}
+                                    <div className="bg-white/5 rounded-3xl p-6 border border-white/5 space-y-4">
+                                        <h4 className="text-[10px] font-black uppercase text-emerald-500 tracking-widest border-b border-white/5 pb-2">Profile Core Parameters</h4>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label className="text-[9px] uppercase opacity-40 font-bold block mb-1">Display Alias</label>
+                                                <input value={profile.name} onChange={e => setProfile({...profile, name: e.target.value})} placeholder="Alias Token" className="w-full bg-black/40 p-3.5 rounded-xl text-xs outline-none border border-white/5 text-white focus:border-emerald-500" />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] uppercase opacity-40 font-bold block mb-1">Encrypted Mobile Connection</label>
+                                                <input value={profile.phone} onChange={e => setProfile({...profile, phone: e.target.value})} placeholder="Mobile Route" className="w-full bg-black/40 p-3.5 rounded-xl text-xs outline-none border border-white/5 text-white focus:border-emerald-500" />
+                                            </div>
+                                            <button onClick={saveProfile} className="w-full py-3.5 bg-emerald-500 text-black font-black text-xs uppercase tracking-widest rounded-xl shadow-lg mt-2 active:scale-[0.98] transition-transform">
+                                                {isSavingProfile ? "Syncing..." : "Commit Parameter Updates"}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Advanced System Configuration Sub-Menu (Facebook-inspired Information Rows) */}
+                                    <div className="bg-white/5 rounded-3xl border border-white/5 overflow-hidden">
+                                        <div className="p-5 border-b border-white/5 bg-white/[0.02]">
+                                            <h4 className="text-[10px] font-black uppercase text-emerald-500 tracking-widest">Application Ecosystem Specs</h4>
+                                        </div>
+                                        <div className="divide-y divide-white/5">
+                                            <div className="flex justify-between items-center p-4 text-xs">
+                                                <span className="opacity-50 font-medium">Administrator Channel</span>
+                                                <span className="font-bold text-[11px] text-emerald-400 select-all">{ADMIN_EMAIL}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center p-4 text-xs">
+                                                <span className="opacity-50 font-medium">Core Platform Version</span>
+                                                <span className="font-mono bg-white/5 border border-white/10 text-[10px] px-2 py-0.5 rounded text-white">{SITE_VERSION}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center p-4 text-xs">
+                                                <span className="opacity-50 font-medium">Device Localization Coordinates</span>
+                                                <button onClick={toggleLocationAccess} className={`text-[10px] uppercase font-black tracking-wider px-3 py-1.5 rounded-lg border transition-colors ${allowLocation ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-white/5 text-white/60 border-white/10'}`}>
+                                                    {allowLocation ? "Active" : "Disabled"}
+                                                </button>
+                                            </div>
+                                            <div className="flex justify-between items-center p-4 text-xs">
+                                                <span className="opacity-50 font-medium">Network Gateway Status</span>
+                                                <span className="flex items-center gap-1.5 font-bold text-[10px] uppercase text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>Secure</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* --- Hidden Cryptographic Admin Console Module --- */}
+                                    {user.email === ADMIN_EMAIL && (
+                                        <div className="bg-white/5 rounded-3xl p-6 border-2 border-emerald-500/20 shadow-xl space-y-4 animate-in slide-in-from-bottom-4 duration-300">
+                                            <div className="flex items-center gap-2 border-b border-white/5 pb-2">
+                                                <PackageIcon />
+                                                <h4 className="text-[11px] font-black uppercase text-emerald-400 tracking-widest">Secure Supply Console</h4>
+                                            </div>
+                                            
+                                            <form onSubmit={handleAddProduct} className="space-y-3">
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="text-[8px] uppercase opacity-40 font-bold block mb-1">Item Title</label>
+                                                        <input value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} placeholder="e.g. Lemon Cherry" className="w-full bg-black/40 p-3 rounded-xl text-xs outline-none border border-white/5 focus:border-emerald-500 text-white" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[8px] uppercase opacity-40 font-bold block mb-1">Price (MWK)</label>
+                                                        <input type="number" value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} placeholder="e.g. 45000" className="w-full bg-black/40 p-3 rounded-xl text-xs outline-none border border-white/5 focus:border-emerald-500 text-white" />
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="text-[8px] uppercase opacity-40 font-bold block mb-1">Classification Category</label>
+                                                        <select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} className="w-full bg-black border border-white/5 p-3 rounded-xl text-xs outline-none focus:border-emerald-500 text-white">
+                                                            <option value="Strains">Strains</option>
+                                                            <option value="Vapes">Vapes</option>
+                                                            <option value="Edibles">Edibles</option>
+                                                            <option value="Gear">Gear</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[8px] uppercase opacity-40 font-bold block mb-1">Compound Purity (% THC)</label>
+                                                        <input type="number" value={newItem.thc} onChange={e => setNewItem({...newItem, thc: e.target.value})} placeholder="24" className="w-full bg-black/40 p-3 rounded-xl text-xs outline-none border border-white/5 focus:border-emerald-500 text-white" />
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-[8px] uppercase opacity-40 font-bold block mb-1">Inventory Image Package</label>
+                                                    <div onClick={() => adminFileRef.current.click()} className="w-full h-24 bg-black/40 rounded-xl border border-dashed border-white/10 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500/50 transition-colors overflow-hidden">
+                                                        {newItem.img ? (
+                                                            <img src={newItem.img} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="text-center opacity-40">
+                                                                <CameraIcon />
+                                                                <span className="text-[9px] uppercase font-bold block mt-1">Select Media File</span>
+                                                            </div>
+                                                        )}
+                                                        <input type="file" accept="image/*" ref={adminFileRef} className="hidden" onChange={handleAdminProductImageUpload} />
+                                                    </div>
+                                                </div>
+
+                                                {adminStatusMsg && (
+                                                    <p className={`text-[10px] font-bold p-2 rounded-lg ${adminStatusMsg.startsWith('Success') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                                                        {adminStatusMsg}
+                                                    </p>
+                                                )}
+
+                                                <button type="submit" className="w-full py-3 bg-emerald-500 text-black font-black text-xs uppercase tracking-widest rounded-xl active:scale-[0.98] transition-transform shadow-lg">
+                                                    Deploy Asset to Catalog
+                                                </button>
+                                            </form>
+                                        </div>
+                                    )}
+
+                                    {/* Global Account Authorization Disconnect Row */}
+                                    <button onClick={() => auth.signOut()} className="w-full py-4 bg-red-500/5 text-red-500 text-xs font-bold uppercase tracking-widest rounded-2xl border border-red-500/10 hover:bg-red-500/10 transition-colors">
+                                        Terminate Secure Auth Session
+                                    </button>
                                 </div>
                             )}
                         </main>
 
+                        {/* Navigation Dock */}
                         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-[360px] bg-black/80 backdrop-blur-3xl border border-white/10 rounded-2xl p-1.5 flex justify-around items-center z-[200]">
-                            <button onClick={() => setView('menu')} className={`flex-1 py-3 flex items-center justify-center rounded-xl ${view === 'menu' ? 'bg-emerald-500 text-black' : 'opacity-30'}`}><HomeIcon /></button>
-                            <button onClick={() => setView('community')} className={`flex-1 py-3 flex items-center justify-center rounded-xl ${view === 'community' ? 'bg-emerald-500 text-black' : 'opacity-30'}`}><UsersIcon /></button>
-                            <button onClick={() => setView('chat')} className={`flex-1 py-3 flex items-center justify-center rounded-xl ${view === 'chat' ? 'bg-emerald-500 text-black' : 'opacity-30'}`}><ChatIcon /></button>
-                            <button onClick={() => setView('settings')} className={`flex-1 py-3 flex items-center justify-center rounded-xl ${view === 'settings' ? 'bg-emerald-500 text-black' : 'opacity-30'}`}><SettingsIcon /></button>
+                            <button onClick={() => setView('menu')} className={`flex-1 py-3 flex items-center justify-center rounded-xl ${view === 'menu' ? 'bg-emerald-500 text-black shadow' : 'opacity-30'}`}><HomeIcon /></button>
+                            <button onClick={() => setView('community')} className={`flex-1 py-3 flex items-center justify-center rounded-xl ${view === 'community' ? 'bg-emerald-500 text-black shadow' : 'opacity-30'}`}><UsersIcon /></button>
+                            <button onClick={() => setView('chat')} className={`flex-1 py-3 flex items-center justify-center rounded-xl ${view === 'chat' ? 'bg-emerald-500 text-black shadow' : 'opacity-30'}`}><ChatIcon /></button>
+                            <button onClick={() => setView('settings')} className={`flex-1 py-3 flex items-center justify-center rounded-xl ${view === 'settings' ? 'bg-emerald-500 text-black shadow' : 'opacity-30'}`}><SettingsIcon /></button>
                         </nav>
                     </div>
                 </div>
